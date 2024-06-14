@@ -1,3 +1,4 @@
+import time
 import sys
 from pathlib import Path
 from typing import Union
@@ -33,6 +34,7 @@ def decode_n_tokens(
     res = tokenizer.decode(cur_token[0][0].item(), skip_special_tokens=True).strip() + " "
     yield res
 
+    st = time.time()
     new_tokens = []
     previous_output = ""
     overlap_text = ""  # Stores the text of the overlap to avoid re-decoding
@@ -53,7 +55,13 @@ def decode_n_tokens(
         if ((i + 1) % stream_every_n == 0 or i == num_new_tokens - 1):
             # Determine the range of tokens to decode, including the overlap
             from_index = max(0, start_pos - overlap_size)
-            yield decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+            #yield decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+            out_txt = decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+            et = time.time()
+            ts = i-last_pos
+            print(f'Inference time: {et-st} s, tokens: {ts}, t/s:{ts/(et-st)}')
+            yield out_txt
+            st = time.time()
             last_pos = i
 
             # Update overlap_text to the last few characters of the current output
@@ -66,7 +74,12 @@ def decode_n_tokens(
            (is_llama_3 and next_token[-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>")):
             if i > last_pos:
                 from_index = max(0, start_pos - overlap_size)
-                yield decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+                #yield decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+                out_txt = decode_with_overlap(tokenizer, new_tokens, from_index, overlap_text)
+                et = time.time()
+                ts = i-last_pos
+                print(f'Inference time: {et-st} s, tokens: {ts}, t/s:{ts/(et-st)}')
+                yield out_txt
             break
     return new_tokens
 
@@ -300,6 +313,12 @@ if __name__ == "__main__":
         help='Max prompt length including the history. If exceeded, history is clipped starting from the first (user, assistant) pair.'
     )
     parser.add_argument(
+        '--stream_every_n',
+        type=int,
+        default=7,
+        help='stream_every_n'
+    )
+    parser.add_argument(
         '--disable_history',
         action="store_true",
         help='Whether to disable history of the chat for generation. History is enabled by default.'
@@ -323,6 +342,7 @@ if __name__ == "__main__":
                       checkpoint_path = args.checkpoint_path,
                       precision = args.precision,
                       max_context_length = args.max_context_length,
+                      stream_every_n = args.stream_every_n,
                       use_history = not args.disable_history)
     llm_model.load_model()
 
